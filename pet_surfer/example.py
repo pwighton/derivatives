@@ -56,6 +56,18 @@ ps.visual_gtmseg_QC(
 cereb_gm = join('derivatives', 'suit', 'cerebellar_gm.nii.gz'),  # reference region
 gtmseg = join(recon_dir, mid, 'mri', 'gtmseg.mgz')  # gtmseg segmentation
 
+# The labels_dct dictionary specifies the labels for extracting average TACs.
+# The dictionary key is used as output file name. Additional information is 
+# specified through the following fields:
+#   file: path of the file containing the segmentation
+#   ids: labels for which to extract the TACs. List containing int or lists of int.
+#        Int will be considered as individual regions, and lists of int specify
+#        regions formed by multiple labels. For example,
+#        ids: [1, 2, [2, 3], [3, 4, 5]] will output the average TACs for labels
+#        1, 2 and the combined region formed by the labels [2, 3] and [3, 4 ,5]. 
+#   ext: extension of the output file. Depending on their usage, 
+#        "nii.gz" or "dat" have to be used.
+
 labels_dct = {
         'gtmseg-subcort': {
                 'file': gtmseg,
@@ -70,7 +82,7 @@ labels_dct = {
             },
         'caudate-putamen': {
                 'file':  gtmseg,
-                'ids': [[11, 12, 50, 51]],
+                'ids': [[11, 12, 50, 51]],  # indices in the inner list will be considered 
                 'ext': 'nii.gz'
             }
     }
@@ -83,25 +95,25 @@ ps.extract_vol_tacs(pet_img, gtmseg, reg, out_dir, labels_dct)
 reg = join(out_dir, base + '_to_anat.lta')
 ps.extract_surf_tacs(pet_img, mid, reg, recon_dir, out_dir)
 
-#%% Compute MRTM in high binding regions
+#%% Compute MRTM model in high binding regions to obtain an estimate of k2'
 
 # Create midframe timing file
 mid_frames_dat = join(out_dir, 'midframes.sec.dat')
 ps.create_mid_frame_dat(json_file, mid_frames_dat)
 
 mrtm_hb_dir = join(out_dir, 'mrtm-hb')
-hb_tac = join(out_dir, 'caudate-putamen.nii.gz')
-ref = join(out_dir, 'cereb-gm.dat')
+hb_tac = join(out_dir, 'caudate-putamen.nii.gz')  # TAC of the high-binding region
+ref = join(out_dir, 'cereb-gm.dat')  # TAC of the reference region
 ps.mrtm(hb_tac, ref, mid_frames_dat, mrtm_hb_dir)
 
 #%% Compute MRTM2 for target regions
 
-mid_frames_dat = join(out_dir, 'midframes.sec.dat')
-mrtm_hb_dir = join(out_dir, 'mrtm-hb')
-tac_types = ['annot_lh', 'annot_rh', 'gtmseg-subcort']
-ref = join(out_dir, 'cereb-gm.dat')
+mid_frames_dat = join(out_dir, 'midframes.sec.dat')  # timing file
+mrtm_hb_dir = join(out_dir, 'mrtm-hb')  # for getting k2;
+tac_types = ['annot_lh', 'annot_rh', 'gtmseg-subcort']  # parcellations
+ref = join(out_dir, 'cereb-gm.dat')  # TAC of the reference region
 
 for tac_type in tac_types:
-    tacs = join(out_dir, tac_type + '.nii.gz')
-    mrtm2_dir = join(out_dir, 'mrtm2', tac_type)
+    tacs = join(out_dir, tac_type + '.nii.gz')  # path to parcellation files
+    mrtm2_dir = join(out_dir, 'mrtm2', tac_type)  # output directory
     ps.mrtm2(tacs, ref, mid_frames_dat, mrtm_hb_dir, mrtm2_dir)
