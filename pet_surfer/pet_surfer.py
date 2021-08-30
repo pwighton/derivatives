@@ -15,6 +15,29 @@ import json
 from subprocess import Popen, PIPE
 from os.path import join, isfile
 
+from nipype.interfaces.base import (
+    TraitedSpec,
+    File,
+    traits,
+    InputMultiPath,
+    OutputMultiPath,
+    Directory,
+    isdefined,
+)
+from nipype.interfaces.freesurfer.base import FSCommand, FSTraitedSpec
+from nipype.interfaces.freesurfer.preprocess import (
+    ApplyVolTransformInputSpec,
+    ApplyVolTransformOutputSpec,
+    ApplyVolTransform
+)
+
+# For MRTM/MRTM2
+from nipype.interfaces.freesurfer.model import (
+        GLMFitInputSpec,
+        GLMFitInputSpec,
+        GLMFit
+    )
+
 #%% Utility functions
 
 
@@ -53,200 +76,429 @@ def run(cmd):
         print(output.decode('latin_1'))
     if error:
         print(error.decode('latin_1'))
+
+
+#%% Nipype wrappers
+
+
+class SmoothVolInputSpec(FSTraitedSpec):
+    
+    in_file = File(
+        argstr="--i %s",
+        desc="input volume",
+        mandatory=True
+    )
+    
+    out_file = File(
+        argstr="--o %s",
+        desc="save input after smoothing",
+    )
+    
+    save_detrended = traits.Bool(
+        argsstr='--save-detrended',
+        desc='detrend output when saving'
+    )
+
+    save_unmask = traits.Bool(
+        argstr='--save-unmasked',
+        desc='do not mask outputvol'
+    )
+
+
+    smooth_only = traits.Bool(
+        argsstr='--smooth-only',
+        desc='smooth and save, do not compute fwhm (--so)'
+    )
+
+    mask_file = File(
+        argstr='--mask %s',
+        desc='binary mask'
+    )
+
+    mask_thresh = traits.Float(
+        argstr='--mask-thresh %f',
+        desc='absolute threshold for mask (default is .5)'
+    )
+
+    auto_mask_thresh = traits.Float(
+        argstr='--auto-mask %f',
+        desc='threshold for auto mask'
+    )
+
+
+    nerode = traits.Int(
+        argstr='--nerode %i',
+        desc='erode mask n times prior to computing fwhm'
+    )
+
+    mask_inv = traits.Bool(
+        argstr='--mask-inv',
+        desc='invert mask'
+    )
+    
+    out_mask = File(
+        argstr='--out-mask %s',
+        desc='save final mask'
+    )
+
+    x = File(
+        argstr='--X %s',
+        desc='matlab4 detrending matrix'
+    )
+   
+    detrend = traits.Int(
+        argstr='--detrend %i',
+        desc='polynomial detrending (default 0)'
+    )
+
+    sqr = traits.Bool(
+       argstr='--sqr',
+       desc='compute square of input before smoothing'
+    )
+
+    fwhm = traits.Float(
+            argstr='--fwhm %f',
+            desc='smooth BY fwhm before measuring'
+        )
+   
+    gstd = traits.Float(
+        argstr='--gstd %f',
+        desc='same as --fwhm but specified as the stddev'
+    )
+   
+    median = traits.Int(
+        argstr='--median %i',
+        desc='perform median filtering instead of gaussian'
+    )
+
+    to_fwhm = traits.Float(
+        argstr='--to-fwhm %f',
+        desc='smooth TO fwhm'
+    )
+
+    to_fwhm_tol = traits.Float(
+        argstr='--to-fwhm-tol %f',
+        desc='smooth to fwhm +/- tol (def .5mm)'
+    
+    )
+    
+    to_fwhm_nmax = traits.Int(
+        argstr='--to-fwhm-nmax %i',
+        desc='maximum number of iterations (def 20)'
+    )
+    
+    to_fwhm_file = File(
+        argstr='--to-fwhm-file %s',
+        desc='save to-fwhm params in file'
+    )
+    
+    sum_file = File(
+        argstr='--sum %s',
+        desc='summary/log'
+    )
+    dat = File(
+        argstr='--dat %s',
+        desc='only the final fwhm estimate'
+    )
+    
+    synth = traits.Bool(
+        argstr='--synth',
+        desc='Create synthetic data (???)'
+    )
+    
+    synth_frames = traits.Int(
+        argstr='--synth-frames %i',
+        desc='number of synthetic frames, default is 10'
+    )
     
     
-#%% FreeSurfer wrapper
+    nframesin = traits.Int(
+        argstr='--nframesmin %i',
+        desc='require at least this many frames'
+    )
+    
+    ispm = traits.Bool(
+        argstr='--ispm',
+        desc='input is spm-analyze. Set --i to stem.'
+    )
+    in_nspmzeropad = traits.Int(
+        argstr='--in_nspmzeropad %i',
+        desc='size of zero-padding for spm-analyze'
+    )
+    
+    nthreads = traits.Int(
+        argstr='--nthreads %i',
+        desc='Set OPEN MP threads'
+    )
+
+class SmoothVolOutputSpec(TraitedSpec):
+    out_file = File(exists=True, desc="Smoothed image")
     
 
-def mri_convert(fin, fout, options=''):
+class SmoothVol(FSCommand):
     
+    """Smooth volume using mri_fwhm.
+
+    Examples
+    --------
+    >>> smoothvol = SmoothVol()
+    >>> smoothvol.inputs.in_file = 'img.nii'
+    >>> smoothvol.inputs.out_file = 'smoothed_img.nii'
+    >>> smoothvol.inputs.fwhm = 5
+    >>> smoothvol.cmdline == 'mri_fwhm --fwhm 5.000000 --i img.nii --o smoothed_img.nii'
     """
-    Wrapper for FreeSurfer's mri_convert
+
+    _cmd = "mri_fwhm"
+    input_spec = SmoothVolInputSpec
+    output_spec = SmoothVolOutputSpec
+
+    def _format_arg(self, name, spec, value):       
+        return super(SmoothVol, self)._format_arg(name, spec, value)
     
-    Arguments
-    ---------
-    fin: string
-        path to input file
-    fout: string
-        path to output file
-    options:
-        additional options (see mri_convert --help for details)
-    """ 
+
+class GTMSegInputSpec(FSTraitedSpec):
     
-    cmd = ' '.join(['mri_convert', fin, fout, options])
-    run(cmd)
+    subject_id = traits.String(
+        argstr="--s %s",
+        desc="subject id",
+        mandatory=True
+    )
+
+    xcerseg = traits.Bool(
+        argstr="--xcerseg",
+        desc="run xcerebralseg on this subject to create apas+head.mgz"
+    )
+
+    out_file = File(
+        argstr="--o %s",
+        desc="output volume relative to subject/mri (default is gtmseg.mgz)"
+    )
+
+    usf = traits.Int(
+        argstr="--usf %i",
+        desc="upsampling factor (default is 2)"
+    )
+
+    subsegwm = traits.Bool(
+        argstr="--subsegwm",
+        desc="subsegment WM into lobes (default)"
+    )
+    
+    keep_hypo = traits.Bool(
+        argstr="--keep-hypo",
+        desc="do not relabel hypointensities as WM when subsegmenting WM"
+    )
+    
+    keep_cc = traits.Bool(
+        argstr="--keep-cc",
+        desc="do not relabel corpus callosum as WM"
+    )
+
+    dmax = traits.Float(
+            argstr="--dmax %f",
+            desc="distance threshold to use when subsegmenting WM (default is 5)"
+        )
+
+    ctx_annot = traits.Tuple(
+        traits.String,
+        traits.Int,
+        traits.Int,
+        argstr="--ctx-annot %s %i %i",
+        desc="annot lhbase rhbase : annotation to use for cortical segmentation (default is aparc 1000 2000)"
+    )
+
+    wm_annot = traits.Tuple(
+        traits.String,
+        traits.Int,
+        traits.Int,
+        argstr="--wm-annot %s %i %i",
+        desc="annot lhbase rhbase : annotation to use for WM segmentation (with --subsegwm, default is lobes 3200 4200)"
+    )
+
+    output_usf = traits.Int(
+        argstr="--output-usf %i",
+        desc="set output USF different than USF, mostly for debugging"
+    )
+
+    head = traits.String(
+        argstr="--head %s",
+        desc="use headseg instead of apas+head.mgz"
+    )
+
+    subseg_cblum_wm = traits.Bool(
+        argstr="--subseg-cblum-wm",
+        desc="subsegment cerebellum WM into core and gyri"
+    )     
+
+    no_pons = traits.Bool(
+        argstr="--no-pons",
+        desc="do not add pons segmentation when doing ---xcerseg"
+    )
+    
+    no_vermis = traits.Bool(
+        argstr="--no-vermis",
+        desc="do not add vermis segmentation when doing ---xcerseg"
+    )
+
+    ctab = File(
+        exists=True,
+        argstr="--ctab %s",
+        desc="colortable"
+    )
+    no_seg_stats = traits.Bool(
+        argstr="--no-seg-stats",
+        desc="do not compute segmentation stats"
+    )    
 
 
-def mri_coreg(mov, ref, reg, options=''):
-    
+class GTMSegOutputSpec(TraitedSpec):
+    out_file = File(exists=True, desc="GTM segmentation")
+
+
+class GTMSeg(FSCommand):
+    """create an anatomical segmentation for the geometric transfer matrix (GTM).
+
+    Examples
+    --------
+    >>> gtmseg = GTMSeg()
+    >>> gtmseg.inputs.out_file = 'gtmseg.nii'
+    >>> gtmseg.inputs.subject_id = 'subjec_id'
+    >>> gtmseg.cmdline == 'gtmseg --o gtmseg.nii --s subject_id'
+
     """
-    Wrapper for FreeSurfer's mri_coreg
-    
-    Arguments
-    ---------
-    mov: string
-        path to moveable volume
-    ref: string
-        path to reference volume
-    reg: string
-        path to output registration file
-    options:
-        additional options (see mri_coreg --help for details)
-    """ 
-    
-    cmd = ' '.join([
-            'mri_coreg',
-            '--mov', mov,
-            '--ref', ref,
-            '--reg', reg,
-            options
-        ])
-    run(cmd)
+
+    _cmd = "gtmseg"
+    input_spec = GTMSegInputSpec
+    output_spec = GTMSegOutputSpec
+
+    def _format_arg(self, name, spec, value):       
+        return super(GTMSeg, self)._format_arg(name, spec, value)
 
 
-def mri_vol2vol(mov, targ, fout, reg='--regheader', options=''):
-        
+class MRTMInputSpec(GLMFitInputSpec):
+    
+    mrtm = traits.Tuple(
+        traits.String,
+        traits.String,
+        mandatory=True,
+        argstr="--mrtm1 %s %s",
+        desc="RefTac TimeSec : perform MRTM1 kinetic modeling"
+    )
+
+
+class MRTMOutputSpec(GLMFitInputSpec):
+    r2p = File(desc="estimate of r2p parameter")
+
+
+class MRTM(GLMFit):
+    """Perform MRTM1 kinetic modeling.
+
+    Examples
+    --------
+    >>> mrtm = MRTM()
+    >>> mrtm.inputs.in_file = 'tacs.nii'
+    >>> gtmseg.inputs.mrtm = ('ref_tac.dat', 'timing.dat')
+    >>> mrtm.inputs.glmdir = 'mrtm'
+    >>> mrtm.cmdline == 'mri_glmfit --glmdir mrtm --y tacs.nii --mrtm1 ref_tac.dat timing.dat'
     """
-    Wrapper for FreeSurfer's mri_vol2vol
+
+    _cmd = "mri_glmfit"
+    input_spec = MRTMInputSpec
+    output_spec = MRTMOutputSpec
     
-    Arguments
-    ---------
-    mov: string
-        path to input volume
-    targ: string
-        path to target volume
-    fout: string
-        path to output volume
-    reg: string
-        path to registration file or --regheader (default)
-    options:
-        additional options (see mri_vol2vol --help for details)
-    """ 
-    
-    if reg != '--regheader':
-        reg = '--reg ' + reg
-    
-    cmd = ' '.join([
-            'mri_vol2vol',
-            '--mov', mov,
-            '--targ', targ,
-            '--o', fout,
-            reg, options
-        ])
-    run(cmd)
-    
-    
-def mri_vol2surf(mov, hemi, reg, fout,
-                 projfrac=0.5,
-                 fwhm=None,
-                 options=''):
-    
-    """
-    Wrapper for FreeSurfer's mri_vol2surf
-    
-    Arguments
-    ---------
-    mov: string
-        path to input volume
-    hemi: string
-        hemisphere (lh or rh)
-    reg: string
-        path to registration file or --regheader (default)
-    fout: string
-        path to output volume
-    projfrac: float
-        projection fraction, default 0.5
-    fwhm: None or int
-        smoothing full width at half maximum in mm, default None (no smoothing)
-    options:
-        additional options (see mri_vol2surf --help for details)
-    """ 
-        
-    cmd = ' '.join([
-            'mri_vol2surf',
-            '--mov', mov,
-            '--hemi', hemi,
-            '--reg', reg,
-            '--o', fout,
-            '--projfrac %f' % projfrac,
-            options
-        ])
-    if fwhm is not None:
-        cmd += ' '.join([cmd, '--surf-fwhm', '%i' % fwhm])
-    run(cmd)
+    def _list_outputs(self):
+        outputs = self.output_spec().get()
+        return outputs
 
 
-def mri_binarize(fin, fout, match, options):
+class MRTM2InputSpec(GLMFitInputSpec):
     
-    """
-    Wrapper for FreeSurfer's mri_binarize
+    mrtm2 = traits.Tuple(
+        traits.String,
+        traits.String,
+        traits.Float,
+        mandatory=True,
+        argstr="--mrtm2 %s %s %f",
+        desc="RefTac TimeSec k2prime : perform MRTM2 kinetic modeling"
+    )
     
-    Arguments
-    ---------
-    fin: string
-        path to input volume
-    fout: string
-        path to output volume
-    match: string
-        list of labels to match, e.g., 2 21 32
-    options:
-        additional options (see mri_binarize --help for details)
-    """     
-    
-    cmd = ' '.join([
-            'mri_binarize',
-            '--i', fin,
-            '--o', fout,
-            '--match', match,
-            options
-        ])
-    run(cmd)
-    
-    
-def mris_calc(f1, operation, fout, f2=''):
-    
-    """
-    Wrapper for FreeSurfer's mri_calc
-    
-    Arguments
-    ---------
-    f1: string
-        path to first input volume
-    operation: string
-        operation to perform (see mris_calc --help)
-    fout: string
-        path to output volume
-    f2: string
-        path to second input volume (optional)
-    """    
-    
-    cmd = ' '.join(['mris_calc', '-o', fout, f1, operation, f2])
-    run(cmd)
-    
+    _ext_xor = ['nii', 'nii_gz']
+    nii = traits.Bool(
+        argstr='--nii',
+        desc='save outputs as nii',
+        xor=_ext_xor
+    )
+    nii_gz = traits.Bool(
+        argstr='--nii.gz',
+        desc='save outputs as nii.gz',
+        xor=_ext_xor
+    )
 
-def gtmseg(subject, subjects_dir=None, options=''):
-    
-    """
-    Wrapper for FreeSurfer's gtmseg
-    
-    Arguments
-    ---------
-    subject: string
-        subject in SUBJECTS_DIR
-    subjects_dir: string
-        path to directory containing recons
-    options:
-        additional options (see mri_vol2surf --help for details)
-    """    
-    
-    if subjects_dir is not None:
-        os.environ['SUBJECTS_DIR'] = subjects_dir
-        
-    if not isfile(join(os.environ['SUBJECTS_DIR'], subject, 'mri', 'gtmseg.mgz')):
-        cmd = ' '.join(['gtmseg', '--s', subject, options])
-        # print(cmd)
-        run(cmd)
 
+class MRTM2OutputSpec(GLMFitInputSpec):
+    bp = File(desc="BP estimates")
+
+
+class MRTM2(GLMFit):
+    """Perform MRTM2 kinetic modeling.
+
+    Examples
+    --------
+    >>> mrtm = MRTM()
+    >>> mrtm.inputs.in_file = 'tacs.nii'
+    >>> gtmseg.inputs.mrtm = ('ref_tac.dat', 'timing.dat', 'k2prime.dat')
+    >>> mrtm.inputs.glmdir = 'mrtm2'
+    >>> mrtm2.cmdline == 'mri_glmfit --glmdir mrtm2 --y tacs.nii --mrtm2 ref_tac.dat timing.dat k2prime.dat'
+    """
+
+    _cmd = "mri_glmfit"
+    input_spec = MRTM2InputSpec
+    output_spec = MRTM2OutputSpec
+    
+    def _list_outputs(self):
+        outputs = self.output_spec().get()
+        if isdefined(self.inputs.nii_gz):
+            ext = '.nii.gz'
+        if isdefined(self.inputs.nii):
+            ext = '.nii'
+        else:
+            ext = '.mgh'            
+        outputs['bp'] = join(self.inputs.glm_dir, 'bp' + ext)
+        return outputs
+
+
+class GCAMInputSpec(FSTraitedSpec):
+    gcam = traits.Tuple(
+            File,
+            traits.String,  # can be either file or 0, not sure how to implement
+            traits.String,
+            traits.String,
+            traits.String,
+            traits.Int(min=0, max=5),
+            traits.String,
+            argstr="--gcam %s %s %s %s %s %i %s",
+            desc="mov srclta gcam dstlta vsm interp out \
+             srclta, gcam, or vsm can be set to 0 to indicate identity \
+             direction is automatically determined from srclta and dstlta \
+             interp 0=nearest, 1=trilin, 5=cubicbspline"
+        )
+
+class GCAMOutputSpec(TraitedSpec):
+    out_file = File('input in target space')
+
+class GCAM(FSCommand):
+    """Apply a transform computed by mri_cvs_register.
+
+    Examples
+    --------
+    >>> gcam = GCAM()
+    >>> gcam.inputs.gcam = ('mov.nii', 'src.lta', 'gcam', 'dst.lta', 0, 5, out.nii'
+    >>> gcam.cmdline == 'mri_vol2vol --gcam mov.nii src.lta gcam dst.lta 0 5 out.nii'
+    """
+    
+    _cmd = "mri_vol2vol"
+    input_spec = GCAMInputSpec
+    output_spec = GCAMOutputSpec
 
 #%% Specific processing
 
@@ -313,41 +565,6 @@ def create_weighted_average_pet(fin, json_file, fout, frames=None):
         nib.save(nib.Nifti1Image(wavg, img.affine), fout)
     else:
         print('File ' + fout + ' already exists. Skipping.')
-
-
-def compute_align(mov, reg, ref, aligned=None):
-    
-    """
-    Compute alignment between an average PET image and an anatomical image
-    using mri_coreg
-    
-    Arguments
-    ---------
-    mov: string
-        moveable volume to be aligned with anatomical image
-    reg: string
-        output registration file
-    recon_dir:
-        path to subject's FreeSurfer's recon directory
-    aligned:
-        path to average PET image aligned with anatomical image
-    """      
-        
-    # Check if input image exists
-    if not isfile(mov):
-        raise ValueError('Mean image does not exist. ' + mov)
-
-    # Check if reference image exists
-    if not isfile(ref):
-        raise ValueError('Reference image does not exist. ' + ref)
-    
-    # Run coregistration
-    if not isfile(reg):
-        mri_coreg(mov, ref, reg)
-
-    # Align image to anat
-    if aligned is not None:
-        mri_vol2vol(mov, ref, aligned, reg=reg, options='--cubic')
         
 
 def freeview_QC(cmd, png_concat, viewports=['sagittal', 'coronal', 'axial']):
@@ -371,7 +588,7 @@ def freeview_QC(cmd, png_concat, viewports=['sagittal', 'coronal', 'axial']):
     
     pngs = []
     for viewport in viewports:
-        png_out = join('/tmp', viewport + '.png')
+        png_out = join('/tmp', viewport + '.png')  # might conflict with parallel execution
         pngs += [png_out]
         cmd = ' '.join([cmd,
                 '-viewport', viewport,
@@ -416,6 +633,8 @@ def visual_coreg_QC(anat, pet, png):
                 pet + ':colorscale=1000,4500:colormap=jet:opacity=0.3'
             ])
         freeview_QC(cmd, png)
+    else:
+        print('QC Image already exists. Skipping. ' + png)
 
 
 def visual_gtmseg_QC(recon_dir, png):
@@ -442,7 +661,7 @@ def visual_gtmseg_QC(recon_dir, png):
         freeview_QC(cmd, png)
 
 
-def is_finished(tacs_dir, labels_dct):
+def tac_file_exist(tacs_dir, labels_dct):
     
     """
     Check wether all output TAC files have been created
@@ -468,8 +687,10 @@ def save_np_array_to_fs(X, fout):
     
     Arguments
     ---------
-    cmd: string
-        command to be executed
+    X: numpy array
+        data array to be save
+    fout: string
+        path to nifti file
     """  
     
     # Assert input shape
@@ -483,19 +704,15 @@ def save_np_array_to_fs(X, fout):
             fout)
 
 
-def extract_vol_tacs(pet, targ, reg, out_dir, labels_dct):
+def extract_vol_tacs(pet_file, out_dir, labels_dct):
 
     """
     Extract TACs from volume as specified in labels dictionary
     
     Arguments
     ---------
-    pet: string
+    pet_file: string
         path to input dynamic PET volume
-    targ: string
-        path to target volume in anatomical space (e.g., gtmseg.mgz)
-    reg: string
-        path to registration file (PET to anatomical space)
     out_dir: string
         path to output directory
     labels_dct: dictionary
@@ -504,13 +721,8 @@ def extract_vol_tacs(pet, targ, reg, out_dir, labels_dct):
     
     assert_dir(out_dir)
 
-    # Assert tac files in gtmseg space
-    tacs = join(out_dir, 'pet_to_gtmseg.nii.gz')
-    if not is_finished(out_dir, labels_dct):
-        mri_vol2vol(pet, targ, tacs, reg=reg, options='--nearest')
-
-    print('Loading data...')
-    data = nib.load(tacs).get_fdata()
+    print('Loading data: ' + pet_file)
+    data = nib.load(pet_file).get_fdata()
                 
     for key in labels_dct.keys():
         
@@ -518,12 +730,11 @@ def extract_vol_tacs(pet, targ, reg, out_dir, labels_dct):
         
         ext = labels_dct[key]['ext']        
         fout_data = join(out_dir, key + '.' + ext)
-        fout_dct = join(out_dir, key + '.npy')
-        if not isfile(fout_data) or not isfile(fout_dct):
+        if not isfile(fout_data):
 
-            labels = nib.load(labels_dct[key]['file']).get_fdata()
+            labels = np.squeeze(nib.load(labels_dct[key]['file']).get_fdata())
             ids = labels_dct[key]['ids']
-            
+
             # Extract mean tacs
             mean_tacs = []
             for label in ids:
@@ -539,29 +750,21 @@ def extract_vol_tacs(pet, targ, reg, out_dir, labels_dct):
                 np.savetxt(fout_data, mean_tacs.T, fmt='%0.8f')
             else:
                 raise ValueError('Invalid extension ' + ext)
-            print(fout_dct)
-            np.save(fout_dct, labels_dct[key])
             
-    # Clean up, save space
-    if isfile(tacs):
-        os.remove(tacs)
 
-
-def extract_surf_tacs(pet, mid, reg, recon_dir, out_dir):
+def extract_surf_tacs(surf_tacs, hemi, annot, out_dir):
 
     """
     Extract TACs from surface as specified FreeSurfer parcellations
     
     Arguments
     ---------
-    pet: string
-        path to input dynamic PET volume
-    mid: string
+    surf_tacs: string
+        path to input dynamic PET data sampled onto surface
+    subject_id: string
         subject name in the recon directory (i.e., SUBJECTS_DIR)
-    reg: string
-        path to registration file (PET to anatomical space)
-    recon_dir: string
-        path to directory containing recons, will be assigned to SUBJECTS_DIR
+    annot: string
+        path to annot file for surface segmentation
     out_dir: string
         path to output directory
     """     
@@ -569,48 +772,30 @@ def extract_surf_tacs(pet, mid, reg, recon_dir, out_dir):
 
     assert_dir(out_dir)
 
-    for hemi in ['lh', 'rh']:
-
-        fout = join(out_dir, 'annot_' + hemi)
-        if not isfile(fout + '.nii.gz') or not isfile(fout + '.npy'):
-            
-            tacs = join(out_dir, 'tacs_' + hemi + '.nii.gz')
-            if not isfile(tacs):
-                os.environ['SUBJECTS_DIR'] = recon_dir
-                mri_vol2surf(
-                        pet, hemi, reg, tacs,
-                        options='--srcsubject ' + mid + ' --cortex'
-                    )
-
-            data = nib.load(tacs).get_fdata()
-            annot = join(recon_dir, mid, 'label', hemi + '.aparc.annot')
-            labels, ctab, names = zip(nib.freesurfer.read_annot(annot))
-            ids = np.unique(labels)
-            ids = ids[ids != -1]
-            
-            # Extract mean tacs
-            mean_tacs = []
-            for label in ids:
-                mask = np.isin(labels, label).reshape(-1)
-                mean_tacs += [np.mean(data[mask, ...], axis=0).reshape(-1)]
-            mean_tacs = np.vstack(mean_tacs)
+    fout = join(out_dir, 'annot_' + hemi)
+    if not isfile(fout + '.nii.gz'):
+        data = nib.load(surf_tacs).get_fdata()
+        labels, ctab, names = zip(nib.freesurfer.read_annot(annot))
+        ids = np.unique(labels)
+        ids = ids[ids != -1]
         
-            print(fout + '.nii.gz')        
-            save_np_array_to_fs(mean_tacs, fout + '.nii.gz')
-            labels_dct = {'file': annot, 'ids': ids}
-            print(fout + '.npy')
-            np.save(fout + '.npy', labels_dct)   
-
-            # Clean up, save space
-            if isfile(tacs):
-                os.remove(tacs)
+        # Extract mean tacs
+        mean_tacs = []
+        for label in ids:
+            mask = np.isin(labels, label).reshape(-1)
+            mean_tacs += [np.mean(data[mask, ...], axis=0).reshape(-1)]
+        mean_tacs = np.vstack(mean_tacs)
+    
+        print(fout + '.nii.gz')        
+        save_np_array_to_fs(mean_tacs, fout + '.nii.gz')
+        labels_dct = {'file': annot, 'ids': ids}
 
 
 def create_mid_frame_dat(json_file, fout):
 
     """
-    Extract timing of mid frames of dynamic PET data and save for usage by
-    mri_glmfit
+    Extract timing of mid frames of dynamic PET data and save as text file for
+    usage by mri_glmfit
     
     Arguments
     ---------
@@ -626,62 +811,3 @@ def create_mid_frame_dat(json_file, fout):
         np.savetxt(fout, mid_frames, fmt='%0.1f')
     else:
         print('Midframe timing file already exists. Skipping.')
-
-
-def mrtm(tacs, ref, timing, out_dir):
-    
-    """
-    Perform MRTM modeling using FreeSurfer's mri_glmfit
-    
-    Arguments
-    ---------
-    tacs: string
-        path to input PET TACs file
-    ref: string
-        path to reference TAC file
-    timing: string
-        path to timing file
-    out_dir: string
-        path to output directory
-    """  
- 
-    cmd = ' '.join([
-            'mri_glmfit', 
-            '--y', tacs,
-            '--mrtm1', ref, timing,
-            '--o', out_dir,
-            '--no-est-fwhm --nii.gz --yhat-save'
-        ])
-    run(cmd)
-    
-    
-def mrtm2(tacs, ref, timing, mrtm_dir, out_dir):
-    
-    """
-    Perform MRTM2 modeling using FreeSurfer's mri_glmfit
-    
-    Arguments
-    ---------
-    pet: string
-        path to input PET TACs file
-    ref: string
-        path to reference TAC file
-    timing: string
-        path to timing file
-    out_dir: string
-        path to output directory
-    """  
-    
-    assert_dir(out_dir)
-    
-    # Load MRTM parameters
-    k2p = '%0.15f' % np.loadtxt(join(mrtm_dir, 'k2prime.dat'))
-                   
-    cmd = ' '.join([
-            'mri_glmfit',
-            '--y', tacs,
-            '--mrtm2', ref, timing, k2p,
-            '--o', out_dir,
-            '--no-est-fwhm --nii.gz --yhat-save'
-        ])
-    run(cmd)
