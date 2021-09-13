@@ -40,28 +40,15 @@ raw_pet_file = join(base_dir, 'pet', base + '_pet.nii.gz')
 json_file = join(base_dir, 'pet', base + '_pet.json')
 
 # Full path to directory containing FreeSurfer recon (SUBJECTS_DIR)
-recon_dir = join(base_dir, 'derivatives', 'fs_recon')  # i.e., full path to SUBJECTS_DIR
+recon_dir = join(base_dir, 'derivatives', 'recon')  # i.e., full path to SUBJECTS_DIR
 
 # Create output directory
 out_dir = join(base_dir, 'derivatives', 'pet_surfer')
 ps.assert_dir(out_dir)
 
-#%% Convert PET data to neurological orientation
-
-pet_file = join(out_dir, base + '_pet_RAS.nii.gz')
-
-if not isfile(pet_file):
-    print('\n--- Converting PET data to neurological orientation ---\n')
-    convert = MRIConvert(
-        in_file = raw_pet_file,
-        out_file = pet_file,
-        in_orientation ='RAS'
-    )
-    print(convert.cmdline)
-    convert.run()
-
 #%% Create (weighted) average PET images
 
+pet_file = raw_pet_file
 avg_pet_file = join(out_dir, base + '_wavg_pet.nii.gz')
 
 if not isfile(avg_pet_file):
@@ -141,10 +128,19 @@ if not isfile(qc_png):
             join(out_dir, 'QC_gtmseg.png')
         )
 
+#%% Convert FreeSurfer segmentations to BIDS format
+
+# Volumes
+for vol in ['aparc+aseg', 'gtmseg']:
+    
+    
+
+
+
 #%% Extract volume TACs
 
 # Path to segmentation files - to be modified according to the actual location of the files
-cereb_gm_file = join(base_dir, 'derivatives', 'suit', 'cereb-gm.nii.gz')  # reference region
+cereb_gm_file = join(base_dir, 'derivatives', 'suit', base + '_space-gtmseg_label-cereb-gm_mask.nii.gz')  # reference region
 
 # The labels_dct dictionary specifies the labels for extracting average TACs.
 # The dictionary key is used as output file name. Additional information is 
