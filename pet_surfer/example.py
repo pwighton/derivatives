@@ -36,7 +36,7 @@ subject = 'sub-01'
 session = 'ses-baseline'
 base = '_'.join([subject, session])
 base_dir = join('bids_directory', subject, session)
-raw_pet_file = join(base_dir, 'pet', base + '_pet.nii.gz')
+pet_file = join(base_dir, 'pet', base + '_pet.nii.gz')
 json_file = join(base_dir, 'pet', base + '_pet.json')
 
 # Full path to directory containing FreeSurfer recon (SUBJECTS_DIR)
@@ -48,7 +48,6 @@ ps.assert_dir(out_dir)
 
 #%% Create (weighted) average PET images
 
-pet_file = raw_pet_file
 avg_pet_file = join(out_dir, base + '_wavg_pet.nii.gz')
 
 if not isfile(avg_pet_file):
