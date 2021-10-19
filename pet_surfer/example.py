@@ -127,14 +127,6 @@ if not isfile(qc_png):
             join(out_dir, 'QC_gtmseg.png')
         )
 
-#%% Convert FreeSurfer segmentations to BIDS format
-
-# Volumes
-for vol in ['aparc+aseg', 'gtmseg']:
-    
-    
-
-
 
 #%% Extract volume TACs
 
