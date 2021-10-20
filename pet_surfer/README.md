@@ -2,7 +2,7 @@
 
 This repository contains python code for the processing of PET data using the PET Surfer pipeline (https://surfer.nmr.mgh.harvard.edu/fswiki/PetSurfer).
 
-The steps for performing regional, surface-based, and volume based kinetic modeling using MRTM2 modeling are presented in **example.py**. This example presents the specific case of [11C]SB207145, and a test dataset for this tracer can be downloaded from [OpenNeuro](https://openneuro.org/datasets/ds001421). The FreeSurfer reconstruction and mask for the reference region are provided as derivatives in this dataset.
+The steps for performing regional, surface-based, and volume-based kinetic modeling using MRTM2 are outlined in **example.py**. This example presents the specific case of [11C]SB207145, and a test dataset for this tracer can be downloaded from [OpenNeuro](https://openneuro.org/datasets/ds001421). The FreeSurfer reconstruction and mask for the reference region are provided as derivatives in this dataset.
 
 Required packages to run **example.py** are:
 ```
