@@ -602,7 +602,7 @@ def freeview_QC(cmd, png_concat, viewports=['sagittal', 'coronal', 'axial']):
     run(cmd)
     list(map(os.remove, pngs))  
     
-def visual_coreg_QC(anat, pet, png):
+def visual_coreg_QC(anat, pet, png, color_range=[50, 800], opacity=0.3):
     
     """
     Create images for quality control of the aligment between an average
@@ -630,7 +630,9 @@ def visual_coreg_QC(anat, pet, png):
     if not isfile(png):
         cmd = ' '.join([
                 'freeview', anat,
-                pet + ':colorscale=1000,4500:colormap=jet:opacity=0.3'
+                pet + ':colorscale=%i,%i:colormap=jet:opacity=%f' % (
+                    color_range[0], color_range[1], opacity
+                )
             ])
         freeview_QC(cmd, png)
     else:
@@ -752,7 +754,7 @@ def extract_vol_tacs(pet_file, out_dir, labels_dct):
                 raise ValueError('Invalid extension ' + ext)
             
 
-def extract_surf_tacs(surf_tacs, hemi, annot, out_dir):
+def extract_surf_tacs(surf_tacs, hemi, annot, fout):
 
     """
     Extract TACs from surface as specified FreeSurfer parcellations
@@ -765,15 +767,11 @@ def extract_surf_tacs(surf_tacs, hemi, annot, out_dir):
         subject name in the recon directory (i.e., SUBJECTS_DIR)
     annot: string
         path to annot file for surface segmentation
-    out_dir: string
-        path to output directory
+    fout: string
+        path to output file
     """     
         
-
-    assert_dir(out_dir)
-
-    fout = join(out_dir, 'annot_' + hemi)
-    if not isfile(fout + '.nii.gz'):
+    if not isfile(fout):
         data = nib.load(surf_tacs).get_fdata()
         labels, ctab, names = zip(nib.freesurfer.read_annot(annot))
         ids = np.unique(labels)
@@ -786,9 +784,8 @@ def extract_surf_tacs(surf_tacs, hemi, annot, out_dir):
             mean_tacs += [np.mean(data[mask, ...], axis=0).reshape(-1)]
         mean_tacs = np.vstack(mean_tacs)
     
-        print(fout + '.nii.gz')        
-        save_np_array_to_fs(mean_tacs, fout + '.nii.gz')
-        labels_dct = {'file': annot, 'ids': ids}
+        print(fout)        
+        save_np_array_to_fs(mean_tacs, fout)
 
 
 def create_mid_frame_dat(json_file, fout):
