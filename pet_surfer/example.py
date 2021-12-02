@@ -14,6 +14,7 @@ import os
 import numpy as np
 import nibabel as nib
 import pet_surfer as ps
+import argparse
 
 from importlib import reload
 from os.path import join, isfile, isdir
@@ -31,8 +32,11 @@ reload(ps)  # account for any chages to pet_surfer
 # https://openneuro.org/datasets/ds001421
 
 # Assume that openneuro is installed and correctly logged in
-bids_dir = 'ds001421-download'
+parser = argparse.ArgumentParser()
+parser.add_argument("-b", "--bids-dir", default=os.path.join(os.getcwd(),'ds001421-download'))
+args = parser.parse_args()
 
+bids_dir = args.bids_dir
 if not isdir(bids_dir):
     print('\nDirectory ' + bids_dir + ' does not exist. Attempting to dowload it using openneuro-cli (may take a few minutes)')
     ps.run('openneuro download --snapshot 1.2.1 ds001421 ' + bids_dir)
